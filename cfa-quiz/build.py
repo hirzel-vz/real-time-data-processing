@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 """
-Builds 'cfa-level1-mock-exam.json' (json2h5p quiz format) from the Google Doc
-"2026 CFA Program LI Mock Exam 2 Session 1".
+Builds 'cfa-level1-mock-exam.json' (json2h5p branching scenario format) from
+the Google Doc "2026 CFA Program LI Mock Exam 2 Session 1".
 
 Usage:  python build.py
 Input:  doc.txt (plain-text export of the Google Doc) placed next to this
         script, OR the script downloads it directly from Google Docs.
 Output: cfa-level1-mock-exam.json  (feed this to json2h5p, e.g.
-        H5PConverter().convert_quiz_to_h5p(...))
+        H5PConverter().convert_branching_scenario_to_h5p(...))
 
-Tested against artturner/json2h5p: converts cleanly to an H5P Question Set
-with all 90 questions, per-option correct flags and feedback.
+Structure: a 'start' content node, 90 quiz nodes chained linearly
+(q1 -> q2 -> ... -> q90), and an 'end_summary' content node.
+
+Tested against artturner/json2h5p: converts cleanly to an H5P Branching
+Scenario with all 90 questions, per-option correct flags and feedback.
 """
 
 import json
@@ -39,7 +42,7 @@ def load_text():
         return data.decode("utf-8-sig")
 
 
-def build_quiz(text):
+def build_questions(text):
     lines = text.splitlines()
 
     blocks = {}
@@ -121,6 +124,56 @@ def build_quiz(text):
     if len(questions) != 90:
         print(f"WARNING: expected 90 questions, parsed {len(questions)}", file=sys.stderr)
 
+    return questions
+
+
+def build_scenario(questions):
+    """Wrap the questions in the json2h5p branching scenario structure."""
+    nodes = [
+        {
+            "id": "start",
+            "type": "content",
+            "content": (
+                "Welcome to the 2026 CFA Program Level I Mock Exam 2, Session 1. "
+                "This exam covers ethics and professional standards, quantitative "
+                "methods, economics, financial reporting and analysis, corporate "
+                "issuers, equity investments, and portfolio management. There are "
+                "90 multiple-choice questions. Answer each question to proceed to "
+                "the next one."
+            ),
+            "choices": [
+                {"text": "Begin the exam", "next": "q1"}
+            ],
+        }
+    ]
+
+    for i, q in enumerate(questions, 1):
+        node = {
+            "id": f"q{i}",
+            "type": "quiz",
+            "question": q["question"],
+            "options": q["options"],
+        }
+        if i < len(questions):
+            node["next"] = f"q{i + 1}"
+        else:
+            node["next"] = "end_summary"
+        nodes.append(node)
+
+    nodes.append(
+        {
+            "id": "end_summary",
+            "type": "content",
+            "content": (
+                "You have completed the 2026 CFA Program Level I Mock Exam 2, "
+                "Session 1 — all 90 questions. Review your answers and the "
+                "feedback for each question to identify areas for further study. "
+                "Good luck with your CFA preparation!"
+            ),
+            "choices": [],
+        }
+    )
+
     return {
         "title": "2026 CFA Program Level I Mock Exam 2 - Session 1",
         "introduction": (
@@ -129,21 +182,20 @@ def build_quiz(text):
             "analysis, corporate issuers, equity investments, and portfolio "
             "management, based on the 2026 CFA Program Level I curriculum."
         ),
-        "questions": questions,
-        "passPercentage": 80,
-        "allowRetry": True,
-        "randomizeQuestions": False,
+        "nodes": nodes,
     }
 
 
 def main():
-    quiz = build_quiz(load_text())
+    questions = build_questions(load_text())
+    scenario = build_scenario(questions)
     with open(OUTPUT, "w", encoding="utf-8") as f:
-        json.dump(quiz, f, indent=2, ensure_ascii=False)
+        json.dump(scenario, f, indent=2, ensure_ascii=False)
     answers = " ".join(
-        "ABC"[[o["correct"] for o in q["options"]].index(True)] for q in quiz["questions"]
+        "ABC"[[o["correct"] for o in q["options"]].index(True)] for q in questions
     )
-    print(f"Written {OUTPUT} with {len(quiz['questions'])} questions.")
+    n_nodes = len(scenario["nodes"])
+    print(f"Written {OUTPUT}: {len(questions)} questions, {n_nodes} nodes.")
     print("Answer key:", answers)
 
 
