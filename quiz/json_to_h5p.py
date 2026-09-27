@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 """
 JSON to H5P Converter
-Converts JSON quiz and branching scenario files to H5P format.
+Converts quiz JSON files (containing a "questions" array) to H5P Question
+Set packages. Run it in the directory holding your quiz JSON files:
+
+    python json_to_h5p.py
+
+Branching scenario JSON files (with a "nodes" array) are ignored by this
+script; convert those with json_to_h5p_branching.py instead.
 """
 
 import json
@@ -500,11 +506,9 @@ def main():
             converter.convert_quiz_to_h5p(file_name, output_path, data.get("title", file_name))
             print(f"Quiz conversion completed: {output_path}")
         elif "nodes" in data:
-            print(f"Converting branching scenario {file_name} to {output_path}...")
-            converter.convert_branching_scenario_to_h5p(file_name, output_path, data.get("title", file_name))
-            print(f"Branching scenario conversion completed: {output_path}")
+            print(f"Skipping {file_name}: branching scenario detected (use json_to_h5p_branching.py)")
         else:
-            print(f"Skipping {file_name}: no 'questions' or 'nodes' key found")
+            print(f"Skipping {file_name}: no 'questions' key found")
 
 
 if __name__ == "__main__":

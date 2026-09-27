@@ -1,0 +1,176 @@
+{
+  "title": "Week 1 – Civic Lab: Philadelphia 1787 – The Compromise Builder",
+  "introduction": "You are a delegate at the Constitutional Convention. Your state wants you to protect its influence in Congress and ensure the new government can function. Can you navigate the debates and get a Constitution signed?",
+  "nodes": [
+    {
+      "id": "start",
+      "type": "content",
+      "content": "Welcome to Philadelphia, 1787. Delegates from 12 states are here to revise the Articles of Confederation — or maybe replace them entirely.",
+      "choices": [
+        {
+          "text": "Proceed to representation debate",
+          "next": "rep_debate"
+        }
+      ]
+    },
+    {
+      "id": "rep_debate",
+      "type": "branch",
+      "content": "First major question: How should states be represented in Congress?",
+      "choices": [
+        {
+          "text": "Representation based on population",
+          "next": "va_plan"
+        },
+        {
+          "text": "Equal representation for all states",
+          "next": "nj_plan"
+        }
+      ]
+    },
+    {
+      "id": "va_plan",
+      "type": "quiz",
+      "question": "Which plan called for representation based solely on population?",
+      "options": [
+        {
+          "text": "Virginia Plan",
+          "correct": true,
+          "feedback": "Correct — Larger states favored this plan."
+        },
+        {
+          "text": "New Jersey Plan",
+          "correct": false,
+          "feedback": "Incorrect — That plan called for equal representation."
+        }
+      ],
+      "next": "exec_power"
+    },
+    {
+      "id": "nj_plan",
+      "type": "quiz",
+      "question": "Which plan called for equal representation regardless of state size?",
+      "options": [
+        {
+          "text": "Virginia Plan",
+          "correct": false,
+          "feedback": "Incorrect — That plan favored large states."
+        },
+        {
+          "text": "New Jersey Plan",
+          "correct": true,
+          "feedback": "Correct — Smaller states supported this plan."
+        }
+      ],
+      "next": "exec_power"
+    },
+    {
+      "id": "exec_power",
+      "type": "branch",
+      "content": "Next debate: How strong should the executive branch be?",
+      "choices": [
+        {
+          "text": "Single strong executive",
+          "next": "single_exec"
+        },
+        {
+          "text": "Weak plural executive",
+          "next": "plural_exec"
+        }
+      ]
+    },
+    {
+      "id": "single_exec",
+      "type": "quiz",
+      "question": "Which branch checks the executive’s power to veto laws?",
+      "options": [
+        {
+          "text": "Legislative",
+          "correct": true,
+          "feedback": "Correct — Congress can override a veto."
+        },
+        {
+          "text": "Judicial",
+          "correct": false,
+          "feedback": "Incorrect — Courts interpret laws but do not override vetoes."
+        }
+      ],
+      "next": "slavery_commerce"
+    },
+    {
+      "id": "plural_exec",
+      "type": "quiz",
+      "question": "What is one risk of having multiple executives share power?",
+      "options": [
+        {
+          "text": "Decision-making can be slower",
+          "correct": true,
+          "feedback": "Correct — Divided leadership can slow response."
+        },
+        {
+          "text": "Too much power concentrated in one person",
+          "correct": false,
+          "feedback": "Incorrect — This is less of a risk with multiple leaders."
+        }
+      ],
+      "next": "slavery_commerce"
+    },
+    {
+      "id": "slavery_commerce",
+      "type": "branch",
+      "content": "Finally: How should the Constitution handle slavery and trade?",
+      "choices": [
+        {
+          "text": "Allow Congress to ban the slave trade immediately",
+          "next": "ban_now"
+        },
+        {
+          "text": "Delay the ban for 20 years",
+          "next": "delay_ban"
+        }
+      ]
+    },
+    {
+      "id": "ban_now",
+      "type": "quiz",
+      "question": "Which clause delayed Congressional action on banning the slave trade until 1808?",
+      "options": [
+        {
+          "text": "Slave Trade Clause",
+          "correct": true,
+          "feedback": "Correct — It postponed action until 1808."
+        },
+        {
+          "text": "Three-Fifths Compromise",
+          "correct": false,
+          "feedback": "Incorrect — That dealt with representation."
+        }
+      ],
+      "next": "end_summary"
+    },
+    {
+      "id": "delay_ban",
+      "type": "quiz",
+      "question": "The Three-Fifths Compromise counted enslaved people as:",
+      "options": [
+        {
+          "text": "Three-fifths of a person",
+          "correct": true,
+          "feedback": "Correct — For both representation and taxation."
+        },
+        {
+          "text": "A full person",
+          "correct": false,
+          "feedback": "Incorrect — That was not agreed upon."
+        }
+      ],
+      "next": "end_summary"
+    },
+    {
+      "id": "end_summary",
+      "type": "content",
+      "content": "You’ve completed the Philadelphia 1787 simulation! Your choices shaped the balance between large and small states, the strength of the executive, and the compromises over slavery and commerce.",
+      "choices": []
+    }
+  ]
+}

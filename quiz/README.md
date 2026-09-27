@@ -5,17 +5,21 @@ patched `json_to_h5p.py` converter in this folder.
 
 ## Files in this folder
 
-- `json_to_h5p.py` — patched converter. Differences from the upstream
+- `json_to_h5p.py` — quiz converter: converts `.json` files containing a `questions`
+  array to H5P **Question Set** packages. Differences from the upstream
   [artturner/json2h5p](https://github.com/artturner/json2h5p) version:
-  1. `main()` converts **every** `.json` file in the current directory (upstream only
+  1. `main()` converts **every** quiz `.json` file in the current directory (upstream only
      converts two hardcoded filenames and silently ignores everything else).
-  2. Quiz vs. branching scenario is auto-detected by content (`questions` key vs.
-     `nodes` key). Files that are neither are skipped with a message.
-  3. Invalid JSON is reported with a clear error message instead of being silently ignored.
-  4. The quiz `title` from your JSON is written into `h5p.json` (upstream hardcoded
+  2. Invalid JSON is reported with a clear error message instead of being silently ignored.
+  3. The quiz `title` from your JSON is written into `h5p.json` (upstream hardcoded
      "Converted Content").
+  4. Branching scenario files are skipped with a pointer to `json_to_h5p_branching.py`.
+- `json_to_h5p_branching.py` — scenario converter: converts `.json` files containing
+  a `nodes` array to H5P **Branching Scenario** packages. Same fixes as above; quiz
+  files are skipped with a pointer to `json_to_h5p.py`.
 - `cfa_mock_exam_2_session_1.json` — example quiz (90 multiple-choice questions),
   fully sanitized and verified.
+- `Week1_CivicLab_Philadelphia1787.json` — example branching scenario.
 
 ## Quiz JSON schema
 
@@ -70,12 +74,15 @@ The JSON must parse cleanly and survive any editor/encoding. Every string value 
 
 ## How to convert
 
+Two scripts, one per content type — run the one matching your file(s):
+
 ```bash
 cd quiz
-python json_to_h5p.py
+python json_to_h5p.py            # quizzes only (files with a "questions" array)
+python json_to_h5p_branching.py   # branching scenarios only (files with a "nodes" array)
 ```
 
-Every valid `.json` file in the directory is converted to a sibling `.h5p` file.
+Each script converts only its own file type and tells you what it skipped and why.
 For a single file with custom output name:
 
 ```python
