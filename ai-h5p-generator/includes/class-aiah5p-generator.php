@@ -37,47 +37,51 @@ class AIAH5P_Generator
             self::redirect_with_notice($redirect, 'error', $content_json->get_error_message());
         }
 
-        $file = AIAH5P_H5P_Builder::build_h5p_file($content_type, $content_json);
-        if (is_wp_error($file)) {
-            self::redirect_with_notice($redirect, 'error', $file->get_error_message());
+        $id = uniqid('aiah5p_');
+        $title = isset($content_json['title']) && $content_json['title'] !== '' ? $content_json['title'] : __('AI-generated H5P', 'ai-h5p-generator');
+
+        $dir = AIAH5P_H5P_Builder::build_content_dir($id, $content_type, $content_json);
+        if (is_wp_error($dir)) {
+            self::redirect_with_notice($redirect, 'error', $dir->get_error_message());
         }
 
-        $saved = self::save_to_media_library($file['path'], $content_json['title'] ?? 'ai-h5p-content');
-        if (is_wp_error($saved)) {
-            self::redirect_with_notice($redirect, 'error', $saved->get_error_message());
+        $post_id = AIAH5P_Content_Store::save($title, $content_type, $prompt, $dir);
+        if (is_wp_error($post_id)) {
+            self::redirect_with_notice($redirect, 'error', $post_id->get_error_message());
+        }
+
+        $rename_from = trailingslashit(AIAH5P_Content_Store::base_dir()) . $id;
+        $rename_to = trailingslashit(AIAH5P_Content_Store::base_dir()) . $post_id;
+        if (!@rename($rename_from, $rename_to)) {
+            self::copy_dir_simple($rename_from, $rename_to);
         }
 
         self::redirect_with_notice(
-            add_query_arg('aiah5p_attachment_id', $saved, $redirect),
+            add_query_arg('aiah5p_content_id', $post_id, $redirect),
             'success',
-            sprintf('H5P file generated and saved to the media library (attachment #%d). Import it into the H5P plugin or download it from the media library.', $saved)
+            sprintf(
+                /* translators: 1: content id, 2: shortcode */
+                __('H5P content created (id %1$d). Use the shortcode %2$s in any post or page.', 'ai-h5p-generator'),
+                $post_id,
+                '[aiah5p id="' . $post_id . '"]'
+            )
         );
     }
 
-    private static function save_to_media_library($path, $title)
+    private static function copy_dir_simple($src, $dst)
     {
-        require_once ABSPATH . 'wp-admin/includes/media.php';
-        require_once ABSPATH . 'wp-admin/includes/file.php';
-        require_once ABSPATH . 'wp-admin/includes/image.php';
-
-        $file_array = [
-            'name' => sanitize_title($title) . '.h5p',
-            'tmp_name' => $path,
-        ];
-
-        $attachment_id = media_handle_sideload($file_array, 0, $title);
-
-        if (is_wp_error($attachment_id)) {
-            @unlink($path);
-            return $attachment_id;
+        if (!is_dir($src)) {
+            return;
         }
-
-        wp_update_post([
-            'ID' => $attachment_id,
-            'post_content' => '',
-        ]);
-
-        return $attachment_id;
+        @mkdir($dst, 0755, true);
+        $entries = new FilesystemIterator($src);
+        foreach ($entries as $entry) {
+            if ($entry->isDir()) {
+                self::copy_dir_simple($entry->getPathname(), $dst . '/' . $entry->getFilename());
+            } else {
+                @copy($entry->getPathname(), $dst . '/' . $entry->getFilename());
+            }
+        }
     }
 
     private static function redirect_with_notice($url, $type, $message)

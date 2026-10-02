@@ -209,24 +209,19 @@ class AIAH5P_H5P_Builder
         return new WP_Error('aiah5p_unsupported_type', sprintf(__('Unsupported content type: %s', 'ai-h5p-generator'), $content_type));
     }
 
-    public static function build_h5p_file($content_type, $content_json)
+    public static function library_source($content_type)
+    {
+        return AIAH5P_PLUGIN_DIR . 'h5p-libraries/' . $content_type;
+    }
+
+    public static function build_content_dir($id, $content_type, $content_json)
     {
         require_once ABSPATH . 'wp-admin/includes/file.php';
 
-        $upload_dir = wp_upload_dir();
-        $tmp_dir = wp_tempnam('aiah5p') . '_dir';
-        if (!wp_mkdir_p($tmp_dir)) {
-            return new WP_Error('aiah5p_tmp_failed', __('Could not create a temporary directory.', 'ai-h5p-generator'));
-        }
+        $base_dir = AIAH5P_Content_Store::base_dir();
+        $target_dir = trailingslashit($base_dir) . $id;
 
-        $content_dir = trailingslashit($tmp_dir) . 'content';
-        if (!wp_mkdir_p($content_dir)) {
-            return new WP_Error('aiah5p_tmp_failed', __('Could not create a temporary directory.', 'ai-h5p-generator'));
-        }
-
-        // Placeholder: the H5P file requires bundled library files; the integrator
-        // bundles the required libraries in the plugin's h5p-libraries directory.
-        $library_source = AIAH5P_PLUGIN_DIR . 'h5p-libraries/' . $content_type;
+        $library_source = self::library_source($content_type);
         if (!is_dir($library_source)) {
             return new WP_Error(
                 'aiah5p_missing_library',
@@ -238,25 +233,57 @@ class AIAH5P_H5P_Builder
             );
         }
 
+        if (!wp_mkdir_p($target_dir . '/content')) {
+            return new WP_Error('aiah5p_write_failed', __('Could not create the content directory in uploads.', 'ai-h5p-generator'));
+        }
+
         file_put_contents(
-            $content_dir . '/content.json',
+            $target_dir . '/content/content.json',
             wp_json_encode($content_json, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)
         );
 
-        self::copy_dir($library_source, $tmp_dir);
+        self::copy_dir($library_source, $target_dir);
 
-        $zip_path = $tmp_dir . '.h5p';
+        $main_library = self::main_library_name($content_type);
+        file_put_contents(
+            $target_dir . '/h5p.json',
+            wp_json_encode([
+                'title' => isset($content_json['title']) ? $content_json['title'] : $id,
+                'language' => 'und',
+                'mainLibrary' => $main_library,
+                'embedTypes' => ['div'],
+            ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)
+        );
+
+        return $target_dir;
+    }
+
+    public static function zip_content($id)
+    {
+        $dir = AIAH5P_Content_Store::content_dir($id);
+        if (is_wp_error($dir)) {
+            return $dir;
+        }
+
+        $zip_path = trailingslashit(AIAH5P_Content_Store::base_dir()) . $id . '.h5p';
         $zip = new ZipArchive();
-        if ($zip->open($zip_path, ZipArchive::OVERWRITE) !== true) {
+        if ($zip->open($zip_path, ZipArchive::OVERWRITE | ZipArchive::CREATE) !== true) {
             return new WP_Error('aiah5p_zip_failed', __('Could not create the H5P zip archive.', 'ai-h5p-generator'));
         }
-        self::zip_add_dir($zip, $tmp_dir, '');
+        self::zip_add_dir($zip, $dir, '');
         $zip->close();
 
-        return [
-            'path' => $zip_path,
-            'tmp_dir' => $tmp_dir,
+        return $zip_path;
+    }
+
+    private static function main_library_name($content_type)
+    {
+        $map = [
+            'H5P.QuestionSet' => 'H5P.QuestionSet',
+            'H5P.MultiChoice' => 'H5P.MultiChoice',
+            'H5P.Blanks' => 'H5P.Blanks',
         ];
+        return isset($map[$content_type]) ? $map[$content_type] : $content_type;
     }
 
     private static function copy_dir($src, $dst)

@@ -35,6 +35,15 @@ class AIAH5P_Admin
 
         add_submenu_page(
             'aiah5p-generator',
+            __('Content', 'ai-h5p-generator'),
+            __('Content', 'ai-h5p-generator'),
+            'manage_options',
+            'aiah5p-content',
+            [__CLASS__, 'render_content_page']
+        );
+
+        add_submenu_page(
+            'aiah5p-generator',
             __('Settings', 'ai-h5p-generator'),
             __('Settings', 'ai-h5p-generator'),
             'manage_options',
@@ -104,6 +113,91 @@ class AIAH5P_Admin
             </form>
         </div>
         <?php
+    }
+
+    public static function render_content_page()
+    {
+        if (!current_user_can('manage_options')) {
+            wp_die(__('You are not allowed to do that.', 'ai-h5p-generator'));
+        }
+
+        if (isset($_GET['aiah5p_action'], $_GET['aiah5p_content_id'])) {
+            check_admin_referer('aiah5p_content_action');
+            $content_id = absint($_GET['aiah5p_content_id']);
+            $action = sanitize_key($_GET['aiah5p_action']);
+
+            if ($action === 'delete') {
+                $result = AIAH5P_Content_Store::delete($content_id);
+                if (is_wp_error($result)) {
+                    self::redirect_with_notice('aiah5p-content', 'error', $result->get_error_message());
+                }
+                self::redirect_with_notice('aiah5p-content', 'success', __('Content deleted.', 'ai-h5p-generator'));
+            } elseif ($action === 'download') {
+                $zip = AIAH5P_H5P_Builder::zip_content($content_id);
+                if (is_wp_error($zip)) {
+                    self::redirect_with_notice('aiah5p-content', 'error', $zip->get_error_message());
+                }
+                $title = get_the_title($content_id);
+                header('Content-Type: application/zip');
+                header('Content-Disposition: attachment; filename="' . sanitize_title($title ? $title : 'aiah5p-content') . '.h5p"');
+                header('Content-Length: ' . filesize($zip));
+                header('Connection: close');
+                readfile($zip);
+                exit;
+            }
+        }
+
+        $contents = get_posts([
+            'post_type' => AIAH5P_Content_Store::POST_TYPE,
+            'numberposts' => 100,
+            'orderby' => 'date',
+            'order' => 'DESC',
+            'post_status' => 'any',
+        ]);
+        ?>
+        <div class="wrap">
+            <h1><?php esc_html_e('AI H5P Generator — Content', 'ai-h5p-generator'); ?></h1>
+            <p><?php printf(esc_html__('Use %s in any post or page to embed an item.', 'ai-h5p-generator'), '<code>[aiah5p id="…"]</code>'); ?></p>
+            <table class="widefat striped">
+                <thead>
+                    <tr>
+                        <th><?php esc_html_e('Title', 'ai-h5p-generator'); ?></th>
+                        <th><?php esc_html_e('Content type', 'ai-h5p-generator'); ?></th>
+                        <th><?php esc_html_e('Shortcode', 'ai-h5p-generator'); ?></th>
+                        <th><?php esc_html_e('Created', 'ai-h5p-generator'); ?></th>
+                        <th><?php esc_html_e('Actions', 'ai-h5p-generator'); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php if (empty($contents)) : ?>
+                    <tr><td colspan="5"><em><?php esc_html_e('No content generated yet. Go to Generate to create your first H5P.', 'ai-h5p-generator'); ?></em></td></tr>
+                <?php else : foreach ($contents as $content) : ?>
+                    <tr>
+                        <td><?php echo esc_html($content->post_title); ?></td>
+                        <td><?php echo esc_html((string) get_post_meta($content->ID, 'aiah5p_content_type', true)); ?></td>
+                        <td><code>[aiah5p id="<?php echo esc_attr($content->ID); ?>"]</code></td>
+                        <td><?php echo esc_html(get_the_date('', $content)); ?></td>
+                        <td>
+                            <a href="<?php echo esc_url(wp_nonce_url(add_query_arg(['aiah5p_action' => 'download', 'aiah5p_content_id' => $content->ID], admin_url('admin.php?page=aiah5p-content')), 'aiah5p_content_action')); ?>"><?php esc_html_e('Download .h5p', 'ai-h5p-generator'); ?></a> |
+                            <a href="<?php echo esc_url(wp_nonce_url(add_query_arg(['aiah5p_action' => 'delete', 'aiah5p_content_id' => $content->ID], admin_url('admin.php?page=aiah5p-content')), 'aiah5p_content_action')); ?>"
+                                onclick="return confirm('<?php echo esc_js(__('Delete this content permanently?', 'ai-h5p-generator')); ?>');"><?php esc_html_e('Delete', 'ai-h5p-generator'); ?></a>
+                        </td>
+                    </tr>
+                <?php endforeach; endif; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php
+    }
+
+    private static function redirect_with_notice($page, $type, $message)
+    {
+        $url = add_query_arg([
+            'aiah5p_notice' => $type,
+            'aiah5p_message' => rawurlencode($message),
+        ], admin_url('admin.php?page=' . $page));
+        wp_safe_redirect($url);
+        exit;
     }
 
     public static function render_settings_page()

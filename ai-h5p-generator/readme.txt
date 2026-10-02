@@ -19,6 +19,11 @@ imported into the H5P plugin or downloaded.
 Your Mistral API key is configured on the plugin's Settings page — no file
 access on the server is required.
 
+Generated content is stored under `wp-content/uploads/aiah5p/{id}/` and can be
+embedded in any post or page with the `[aiah5p id="…"]` shortcode (rendered
+with the h5p-standalone player), downloaded as a `.h5p` file for use with the
+official H5P plugin, or deleted — all from the plugin's Content page.
+
 == Installation ==
 
 1. Upload the `ai-h5p-generator` folder to `wp-content/plugins/`, or upload
@@ -38,4 +43,6 @@ complete and can be imported into the H5P plugin.
 
 = 0.1.0 =
 * Initial release: Mistral-powered generation of QuestionSet, MultiChoice and
-  Fill in the Blanks content, admin UI with top-level menu and settings page.
+  Fill in the Blanks content, admin UI with top-level menu, settings page,
+  `[aiah5p]` shortcode rendering via h5p-standalone, and a Content page with
+  download/delete actions.
