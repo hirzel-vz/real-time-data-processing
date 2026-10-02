@@ -209,9 +209,50 @@ class AIAH5P_H5P_Builder
         return new WP_Error('aiah5p_unsupported_type', sprintf(__('Unsupported content type: %s', 'ai-h5p-generator'), $content_type));
     }
 
-    public static function library_source($content_type)
+    public static function libraries_dir()
     {
-        return AIAH5P_PLUGIN_DIR . 'h5p-libraries/' . $content_type;
+        return AIAH5P_PLUGIN_DIR . 'h5p-libraries';
+    }
+
+    public static function installed_libraries()
+    {
+        $libraries = [];
+        $dir = self::libraries_dir();
+        if (!is_dir($dir)) {
+            return $libraries;
+        }
+        $entries = new FilesystemIterator($dir);
+        foreach ($entries as $entry) {
+            if (!$entry->isDir()) {
+                continue;
+            }
+            $json_path = $entry->getPathname() . '/library.json';
+            $info = [
+                'name' => $entry->getFilename(),
+                'title' => '',
+                'version' => '',
+                'dependencies' => [],
+            ];
+            if (file_exists($json_path)) {
+                $decoded = json_decode((string) file_get_contents($json_path), true);
+                if (is_array($decoded)) {
+                    $info['title'] = isset($decoded['title']) ? (string) $decoded['title'] : '';
+                    $info['version'] = isset($decoded['majorVersion'], $decoded['minorVersion'])
+                        ? $decoded['majorVersion'] . '.' . $decoded['minorVersion']
+                        : '';
+                    if (isset($decoded['preloadedDependencies']) && is_array($decoded['preloadedDependencies'])) {
+                        foreach ($decoded['preloadedDependencies'] as $dep) {
+                            $info['dependencies'][] = isset($dep['machineName']) ? $dep['machineName'] : '';
+                        }
+                    }
+                }
+            }
+            $libraries[] = $info;
+        }
+        usort($libraries, function ($a, $b) {
+            return strcmp($a['name'], $b['name']);
+        });
+        return $libraries;
     }
 
     public static function build_content_dir($id, $content_type, $content_json)
@@ -221,15 +262,11 @@ class AIAH5P_H5P_Builder
         $base_dir = AIAH5P_Content_Store::base_dir();
         $target_dir = trailingslashit($base_dir) . $id;
 
-        $library_source = self::library_source($content_type);
-        if (!is_dir($library_source)) {
+        $libraries_dir = self::libraries_dir();
+        if (!is_dir($libraries_dir)) {
             return new WP_Error(
                 'aiah5p_missing_library',
-                sprintf(
-                    /* translators: %s: H5P library name */
-                    __('The H5P library files for "%s" are not bundled with the plugin.', 'ai-h5p-generator'),
-                    $content_type
-                )
+                __('No H5P libraries are installed. Add them under AI H5P → Libraries.', 'ai-h5p-generator')
             );
         }
 
@@ -242,7 +279,7 @@ class AIAH5P_H5P_Builder
             wp_json_encode($content_json, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)
         );
 
-        self::copy_dir($library_source, $target_dir);
+        self::copy_dir($libraries_dir, $target_dir);
 
         $main_library = self::main_library_name($content_type);
         file_put_contents(

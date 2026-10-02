@@ -32,12 +32,14 @@ official H5P plugin, or deleted — all from the plugin's Content page.
 3. Go to AI H5P → Settings and enter your Mistral API key.
 4. Go to AI H5P → Generate and create your first H5P content.
 
-To bundle H5P libraries, place them under `ai-h5p-generator/h5p-libraries/`
-(e.g. `h5p-libraries/H5P.QuestionSet/`, `h5p-libraries/H5P.MultiChoice/`,
-`h5p-libraries/H5P.Blanks/`) — each folder containing the library's
-`library.json`, `semantics.json`, `previews/`, `scripts/`, `styles/` etc. as
-found in the official H5P releases. After that, generated `.h5p` files are
-complete and can be imported into the H5P plugin.
+Upload H5P libraries via the plugin's **Libraries** page: download any
+example `.h5p` file from h5p.org and upload it — the plugin extracts all
+libraries it contains into its shared library directory. All installed
+libraries are bundled into every generated H5P file, so dependencies (e.g.
+QuestionSet needs MultiChoice) always travel together. Libraries can also be
+added or removed manually under `ai-h5p-generator/h5p-libraries/`, one folder
+per library (`H5P.QuestionSet/`, `H5P.MultiChoice/`, ...), each with its
+`library.json`, `semantics.json`, `scripts/`, `styles/` etc.
 
 == Changelog ==
 
