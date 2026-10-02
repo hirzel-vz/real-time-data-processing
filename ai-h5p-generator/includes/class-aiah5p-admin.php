@@ -182,6 +182,7 @@ class AIAH5P_Admin
                         <td><code>[aiah5p id="<?php echo esc_attr($content['id']); ?>"]</code></td>
                         <td><?php echo esc_html($content['created_at']); ?></td>
                         <td>
+                            <a href="<?php echo esc_url(admin_url('admin.php?page=aiah5p-edit&content_id=' . $content['id'])); ?>"><?php esc_html_e('Edit', 'ai-h5p-generator'); ?></a> |
                             <a href="<?php echo esc_url(wp_nonce_url(add_query_arg(['aiah5p_action' => 'download', 'aiah5p_content_id' => $content['id']], admin_url('admin.php?page=aiah5p-content')), 'aiah5p_content_action')); ?>"><?php esc_html_e('Download .h5p', 'ai-h5p-generator'); ?></a> |
                             <a href="<?php echo esc_url(wp_nonce_url(add_query_arg(['aiah5p_action' => 'delete', 'aiah5p_content_id' => $content['id']], admin_url('admin.php?page=aiah5p-content')), 'aiah5p_content_action')); ?>"
                                 onclick="return confirm('<?php echo esc_js(__('Delete this content permanently?', 'ai-h5p-generator')); ?>');"><?php esc_html_e('Delete', 'ai-h5p-generator'); ?></a>

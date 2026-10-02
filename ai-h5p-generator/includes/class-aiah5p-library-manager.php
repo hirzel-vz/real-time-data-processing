@@ -195,6 +195,27 @@ class AIAH5P_Library_Manager
         self::redirect('success', sprintf(__('Deleted library %s.', 'ai-h5p-generator'), $library['folder']));
     }
 
+    public static function library_row($library_id)
+    {
+        global $wpdb;
+        $table = AIAH5P_DB::table('libraries');
+        return $wpdb->get_row($wpdb->prepare("SELECT * FROM {$table} WHERE id = %d", (int) $library_id), ARRAY_A);
+    }
+
+    public static function library_semantics($library_id)
+    {
+        $library = self::library_row($library_id);
+        if (!$library) {
+            return null;
+        }
+        $path = trailingslashit(self::libraries_dir()) . $library['folder'] . '/semantics.json';
+        if (!file_exists($path)) {
+            return null;
+        }
+        $decoded = json_decode((string) file_get_contents($path), true);
+        return is_array($decoded) ? $decoded : null;
+    }
+
     public static function library_usage_count($library_id)
     {
         global $wpdb;

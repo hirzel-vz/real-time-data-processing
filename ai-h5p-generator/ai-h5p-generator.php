@@ -26,6 +26,7 @@ require_once AIAH5P_PLUGIN_DIR . 'includes/class-aiah5p-generator.php';
 require_once AIAH5P_PLUGIN_DIR . 'includes/class-aiah5p-shortcode.php';
 require_once AIAH5P_PLUGIN_DIR . 'includes/class-aiah5p-library-manager.php';
 require_once AIAH5P_PLUGIN_DIR . 'includes/class-aiah5p-admin.php';
+require_once AIAH5P_PLUGIN_DIR . 'includes/class-aiah5p-editor.php';
 
 register_activation_hook(__FILE__, ['AIAH5P_Settings', 'activate']);
 
@@ -39,4 +40,5 @@ add_action('init', function () {
     AIAH5P_Shortcode::init();
     AIAH5P_Library_Manager::init();
     AIAH5P_Admin::init();
+    AIAH5P_Editor::init();
 });

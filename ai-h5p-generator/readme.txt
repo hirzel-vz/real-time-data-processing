@@ -44,6 +44,16 @@ nothing is copied per content item. Libraries that are in use by content
 cannot be deleted. Add libraries via the **Libraries** page by uploading any
 example `.h5p` or `.zip` file from h5p.org.
 
+== Manual creation and editing ==
+
+The **Create** page lists every installed runnable library; choose one to
+create new H5P content from scratch. Every content item — whether created
+manually or generated with AI — is editable via **Content → Edit**, where the
+title and the parameters (content JSON) can be changed; updates are written
+back to the database and the content files, and the shortcode immediately
+reflects the changes. The editor validates the JSON before saving and
+restores your draft after an error.
+
 == Changelog ==
 
 = 0.1.0 =
@@ -51,3 +61,7 @@ example `.h5p` or `.zip` file from h5p.org.
   Fill in the Blanks content, admin UI with top-level menu, settings page,
   `[aiah5p]` shortcode rendering via h5p-standalone, and a Content page with
   download/delete actions.
+* Joubel-style architecture: shared libraries with a database dependency
+  graph, dependency-resolved `.h5p` exports, libraries protected while in use.
+* Manual creation from scratch (Create page) and editing of every content item
+  (Edit page) with JSON validation and draft restore.
