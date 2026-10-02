@@ -6,26 +6,8 @@ if (!defined('ABSPATH')) {
 
 class AIAH5P_Content_Store
 {
-    const POST_TYPE = 'aiah5p_content';
-
     public static function init()
     {
-        add_action('init', [__CLASS__, 'register_post_type']);
-    }
-
-    public static function register_post_type()
-    {
-        register_post_type(self::POST_TYPE, [
-            'labels' => [
-                'name' => __('H5P Content', 'ai-h5p-generator'),
-                'singular_name' => __('H5P Content', 'ai-h5p-generator'),
-            ],
-            'public' => false,
-            'show_ui' => false,
-            'supports' => ['title'],
-            'capability_type' => 'post',
-            'map_meta_cap' => true,
-        ]);
     }
 
     public static function base_dir()
@@ -39,79 +21,101 @@ class AIAH5P_Content_Store
         return $dir;
     }
 
-    public static function base_url()
-    {
-        $uploads = wp_upload_dir();
-        return trailingslashit($uploads['baseurl']) . 'aiah5p';
-    }
-
     public static function content_dir($id)
     {
-        $dir = trailingslashit(self::base_dir()) . $id;
-        if (!is_dir($dir)) {
-            return new WP_Error('aiah5p_not_found', __('The H5P content directory does not exist.', 'ai-h5p-generator'));
-        }
+        $dir = trailingslashit(self::base_dir()) . 'content/' . $id;
         return $dir;
     }
 
     public static function content_url($id)
     {
-        return trailingslashit(self::base_url()) . $id;
+        $uploads = wp_upload_dir();
+        return trailingslashit($uploads['baseurl']) . 'aiah5p/content/' . $id;
     }
 
-    public static function save($title, $content_type, $prompt, $dir)
+    public static function save($title, $content_type, $prompt, $content_json, $main_library_id, $library_ids, $author_id = null)
     {
-        $post_id = wp_insert_post([
-            'post_type' => self::POST_TYPE,
-            'post_status' => 'publish',
-            'post_title' => $title,
-            'post_content' => $prompt,
-        ]);
+        global $wpdb;
+        $contents = AIAH5P_DB::table('contents');
+        $contents_libraries = AIAH5P_DB::table('contents_libraries');
 
-        if (is_wp_error($post_id) || $post_id === 0) {
+        $wpdb->insert($contents, [
+            'title' => $title,
+            'content_type' => $content_type,
+            'prompt' => $prompt,
+            'parameters' => wp_json_encode($content_json, JSON_UNESCAPED_UNICODE),
+            'main_library_id' => (int) $main_library_id,
+            'author_id' => $author_id === null ? get_current_user_id() : (int) $author_id,
+            'created_at' => current_time('mysql'),
+        ]);
+        $content_id = $wpdb->insert_id;
+        if (!$content_id) {
             return new WP_Error('aiah5p_save_failed', __('Could not save the content record.', 'ai-h5p-generator'));
         }
 
-        update_post_meta($post_id, 'aiah5p_content_type', $content_type);
-        update_post_meta($post_id, 'aiah5p_shortcode_id', 'aiah5p_' . $post_id);
+        foreach (array_unique($library_ids) as $library_id) {
+            $wpdb->insert($contents_libraries, [
+                'content_id' => $content_id,
+                'library_id' => (int) $library_id,
+                'dependency_type' => 'preloaded',
+            ]);
+        }
 
-        return $post_id;
+        return $content_id;
     }
 
     public static function get($id)
     {
-        $post = get_post((int) $id);
-        if (!$post || $post->post_type !== self::POST_TYPE) {
+        global $wpdb;
+        $table = AIAH5P_DB::table('contents');
+        $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$table} WHERE id = %d", (int) $id), ARRAY_A);
+        if (!$row) {
             return new WP_Error('aiah5p_not_found', __('H5P content not found.', 'ai-h5p-generator'));
         }
-        return $post;
+        return $row;
+    }
+
+    public static function all()
+    {
+        global $wpdb;
+        $table = AIAH5P_DB::table('contents');
+        return $wpdb->get_results("SELECT * FROM {$table} ORDER BY id DESC", ARRAY_A);
+    }
+
+    public static function content_libraries($content_id)
+    {
+        global $wpdb;
+        $contents_libraries = AIAH5P_DB::table('contents_libraries');
+        $libraries = AIAH5P_DB::table('libraries');
+        return $wpdb->get_results($wpdb->prepare(
+            "SELECT l.* FROM {$contents_libraries} cl JOIN {$libraries} l ON l.id = cl.library_id WHERE cl.content_id = %d",
+            (int) $content_id
+        ), ARRAY_A);
     }
 
     public static function delete($id)
     {
-        $post = self::get($id);
-        if (is_wp_error($post)) {
-            return $post;
+        global $wpdb;
+        $contents = AIAH5P_DB::table('contents');
+        $contents_libraries = AIAH5P_DB::table('contents_libraries');
+
+        $row = self::get($id);
+        if (is_wp_error($row)) {
+            return $row;
         }
 
-        $dir = trailingslashit(self::base_dir()) . $id;
+        $dir = self::content_dir($id);
         if (is_dir($dir)) {
             self::rrmdir($dir);
         }
-        $zip = $dir . '.h5p';
-        if (file_exists($zip)) {
-            @unlink($zip);
-        }
 
-        wp_delete_post($post->ID, true);
+        $wpdb->delete($contents_libraries, ['content_id' => (int) $id]);
+        $wpdb->delete($contents, ['id' => (int) $id]);
         return true;
     }
 
     private static function rrmdir($dir)
     {
-        if (!is_dir($dir)) {
-            return;
-        }
         $entries = new FilesystemIterator($dir);
         foreach ($entries as $entry) {
             if ($entry->isDir()) {

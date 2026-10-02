@@ -32,14 +32,17 @@ official H5P plugin, or deleted — all from the plugin's Content page.
 3. Go to AI H5P → Settings and enter your Mistral API key.
 4. Go to AI H5P → Generate and create your first H5P content.
 
-Upload H5P libraries via the plugin's **Libraries** page: download any
-example `.h5p` file from h5p.org and upload it — the plugin extracts all
-libraries it contains into its shared library directory. All installed
-libraries are bundled into every generated H5P file, so dependencies (e.g.
-QuestionSet needs MultiChoice) always travel together. Libraries can also be
-added or removed manually under `ai-h5p-generator/h5p-libraries/`, one folder
-per library (`H5P.QuestionSet/`, `H5P.MultiChoice/`, ...), each with its
-`library.json`, `semantics.json`, `scripts/`, `styles/` etc.
+Architecture follows the official H5P plugin's model: libraries are stored once
+under `wp-content/uploads/aiah5p/libraries/{Machine}-{major.minor}/` and
+deduplicated by name+version. Content metadata lives in custom database tables
+(`wp_aiah5p_libraries`, `wp_aiah5p_contents`, `wp_aiah5p_contents_libraries`)
+with a dependency graph per content item. When generating content, the plugin
+resolves the full dependency tree (e.g. QuestionSet → MultiChoice), stores the
+mapping, and only bundles exactly those libraries into the exported `.h5p`
+file. The front-end player loads libraries from the shared directory, so
+nothing is copied per content item. Libraries that are in use by content
+cannot be deleted. Add libraries via the **Libraries** page by uploading any
+example `.h5p` or `.zip` file from h5p.org.
 
 == Changelog ==
 

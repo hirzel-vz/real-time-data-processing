@@ -146,7 +146,8 @@ class AIAH5P_Admin
                 if (is_wp_error($zip)) {
                     self::redirect_with_notice('aiah5p-content', 'error', $zip->get_error_message());
                 }
-                $title = get_the_title($content_id);
+                $content = AIAH5P_Content_Store::get($content_id);
+                $title = is_wp_error($content) ? 'aiah5p-content' : $content['title'];
                 header('Content-Type: application/zip');
                 header('Content-Disposition: attachment; filename="' . sanitize_title($title ? $title : 'aiah5p-content') . '.h5p"');
                 header('Content-Length: ' . filesize($zip));
@@ -156,13 +157,7 @@ class AIAH5P_Admin
             }
         }
 
-        $contents = get_posts([
-            'post_type' => AIAH5P_Content_Store::POST_TYPE,
-            'numberposts' => 100,
-            'orderby' => 'date',
-            'order' => 'DESC',
-            'post_status' => 'any',
-        ]);
+        $contents = AIAH5P_Content_Store::all();
         ?>
         <div class="wrap">
             <h1><?php esc_html_e('AI H5P Generator — Content', 'ai-h5p-generator'); ?></h1>
@@ -182,13 +177,13 @@ class AIAH5P_Admin
                     <tr><td colspan="5"><em><?php esc_html_e('No content generated yet. Go to Generate to create your first H5P.', 'ai-h5p-generator'); ?></em></td></tr>
                 <?php else : foreach ($contents as $content) : ?>
                     <tr>
-                        <td><?php echo esc_html($content->post_title); ?></td>
-                        <td><?php echo esc_html((string) get_post_meta($content->ID, 'aiah5p_content_type', true)); ?></td>
-                        <td><code>[aiah5p id="<?php echo esc_attr($content->ID); ?>"]</code></td>
-                        <td><?php echo esc_html(get_the_date('', $content)); ?></td>
+                        <td><?php echo esc_html($content['title']); ?></td>
+                        <td><?php echo esc_html($content['content_type']); ?></td>
+                        <td><code>[aiah5p id="<?php echo esc_attr($content['id']); ?>"]</code></td>
+                        <td><?php echo esc_html($content['created_at']); ?></td>
                         <td>
-                            <a href="<?php echo esc_url(wp_nonce_url(add_query_arg(['aiah5p_action' => 'download', 'aiah5p_content_id' => $content->ID], admin_url('admin.php?page=aiah5p-content')), 'aiah5p_content_action')); ?>"><?php esc_html_e('Download .h5p', 'ai-h5p-generator'); ?></a> |
-                            <a href="<?php echo esc_url(wp_nonce_url(add_query_arg(['aiah5p_action' => 'delete', 'aiah5p_content_id' => $content->ID], admin_url('admin.php?page=aiah5p-content')), 'aiah5p_content_action')); ?>"
+                            <a href="<?php echo esc_url(wp_nonce_url(add_query_arg(['aiah5p_action' => 'download', 'aiah5p_content_id' => $content['id']], admin_url('admin.php?page=aiah5p-content')), 'aiah5p_content_action')); ?>"><?php esc_html_e('Download .h5p', 'ai-h5p-generator'); ?></a> |
+                            <a href="<?php echo esc_url(wp_nonce_url(add_query_arg(['aiah5p_action' => 'delete', 'aiah5p_content_id' => $content['id']], admin_url('admin.php?page=aiah5p-content')), 'aiah5p_content_action')); ?>"
                                 onclick="return confirm('<?php echo esc_js(__('Delete this content permanently?', 'ai-h5p-generator')); ?>');"><?php esc_html_e('Delete', 'ai-h5p-generator'); ?></a>
                         </td>
                     </tr>
@@ -205,11 +200,11 @@ class AIAH5P_Admin
             wp_die(__('You are not allowed to do that.', 'ai-h5p-generator'));
         }
 
-        $libraries = AIAH5P_H5P_Builder::installed_libraries();
+        $libraries = AIAH5P_Library_Manager::installed_libraries();
         ?>
         <div class="wrap">
             <h1><?php esc_html_e('AI H5P Generator — Libraries', 'ai-h5p-generator'); ?></h1>
-            <p><?php esc_html_e('All installed libraries are bundled into every generated H5P file, so dependencies always travel together. Upload additional libraries as .h5p or .zip files (e.g. downloaded from h5p.org).', 'ai-h5p-generator'); ?></p>
+            <p><?php esc_html_e('Libraries are stored once and shared by all content. Each generated H5P file bundles exactly the libraries it needs. Upload additional libraries as .h5p or .zip files (e.g. downloaded from h5p.org).', 'ai-h5p-generator'); ?></p>
 
             <h2><?php esc_html_e('Add a library', 'ai-h5p-generator'); ?></h2>
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" enctype="multipart/form-data">
@@ -231,7 +226,7 @@ class AIAH5P_Admin
                         <th><?php esc_html_e('Library', 'ai-h5p-generator'); ?></th>
                         <th><?php esc_html_e('Title', 'ai-h5p-generator'); ?></th>
                         <th><?php esc_html_e('Version', 'ai-h5p-generator'); ?></th>
-                        <th><?php esc_html_e('Dependencies', 'ai-h5p-generator'); ?></th>
+                        <th><?php esc_html_e('Used by (content items)', 'ai-h5p-generator'); ?></th>
                         <th><?php esc_html_e('Actions', 'ai-h5p-generator'); ?></th>
                     </tr>
                 </thead>
@@ -240,14 +235,14 @@ class AIAH5P_Admin
                     <tr><td colspan="5"><em><?php esc_html_e('No libraries installed yet. Upload the .h5p example files from h5p.org to add them.', 'ai-h5p-generator'); ?></em></td></tr>
                 <?php else : foreach ($libraries as $library) : ?>
                     <tr>
-                        <td><code><?php echo esc_html($library['name']); ?></code></td>
+                        <td><code><?php echo esc_html($library['folder']); ?></code></td>
                         <td><?php echo esc_html($library['title']); ?></td>
-                        <td><?php echo esc_html($library['version']); ?></td>
-                        <td><?php echo esc_html(implode(', ', array_filter($library['dependencies']))); ?></td>
+                        <td><?php echo esc_html($library['major_version'] . '.' . $library['minor_version'] . '.' . $library['patch_version']); ?></td>
+                        <td><?php echo esc_html((string) AIAH5P_Library_Manager::library_usage_count($library['id'])); ?></td>
                         <td>
                             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js(__('Delete this library?', 'ai-h5p-generator')); ?>');">
                                 <input type="hidden" name="action" value="aiah5p_delete_library" />
-                                <input type="hidden" name="aiah5p_library_name" value="<?php echo esc_attr($library['name']); ?>" />
+                                <input type="hidden" name="aiah5p_library_id" value="<?php echo esc_attr($library['id']); ?>" />
                                 <?php wp_nonce_field('aiah5p_library'); ?>
                                 <?php submit_button(__('Delete', 'ai-h5p-generator'), 'small delete', 'submit', false); ?>
                             </form>

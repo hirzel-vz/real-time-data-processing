@@ -209,135 +209,111 @@ class AIAH5P_H5P_Builder
         return new WP_Error('aiah5p_unsupported_type', sprintf(__('Unsupported content type: %s', 'ai-h5p-generator'), $content_type));
     }
 
-    public static function libraries_dir()
+    public static function resolve_libraries($content_type)
     {
-        return AIAH5P_PLUGIN_DIR . 'h5p-libraries';
-    }
+        global $wpdb;
+        $table = AIAH5P_DB::table('libraries');
 
-    public static function installed_libraries()
-    {
-        $libraries = [];
-        $dir = self::libraries_dir();
-        if (!is_dir($dir)) {
-            return $libraries;
-        }
-        $entries = new FilesystemIterator($dir);
-        foreach ($entries as $entry) {
-            if (!$entry->isDir()) {
-                continue;
-            }
-            $json_path = $entry->getPathname() . '/library.json';
-            $info = [
-                'name' => $entry->getFilename(),
-                'title' => '',
-                'version' => '',
-                'dependencies' => [],
-            ];
-            if (file_exists($json_path)) {
-                $decoded = json_decode((string) file_get_contents($json_path), true);
-                if (is_array($decoded)) {
-                    $info['title'] = isset($decoded['title']) ? (string) $decoded['title'] : '';
-                    $info['version'] = isset($decoded['majorVersion'], $decoded['minorVersion'])
-                        ? $decoded['majorVersion'] . '.' . $decoded['minorVersion']
-                        : '';
-                    if (isset($decoded['preloadedDependencies']) && is_array($decoded['preloadedDependencies'])) {
-                        foreach ($decoded['preloadedDependencies'] as $dep) {
-                            $info['dependencies'][] = isset($dep['machineName']) ? $dep['machineName'] : '';
-                        }
-                    }
-                }
-            }
-            $libraries[] = $info;
-        }
-        usort($libraries, function ($a, $b) {
-            return strcmp($a['name'], $b['name']);
-        });
-        return $libraries;
-    }
-
-    public static function build_content_dir($id, $content_type, $content_json)
-    {
-        require_once ABSPATH . 'wp-admin/includes/file.php';
-
-        $base_dir = AIAH5P_Content_Store::base_dir();
-        $target_dir = trailingslashit($base_dir) . $id;
-
-        $libraries_dir = self::libraries_dir();
-        if (!is_dir($libraries_dir)) {
+        $main = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$table} WHERE machine_name = %s ORDER BY major_version DESC, minor_version DESC LIMIT 1",
+            $content_type
+        ), ARRAY_A);
+        if (!$main) {
             return new WP_Error(
                 'aiah5p_missing_library',
-                __('No H5P libraries are installed. Add them under AI H5P → Libraries.', 'ai-h5p-generator')
+                sprintf(
+                    /* translators: %s: H5P library name */
+                    __('The library %s is not installed. Upload it under AI H5P → Libraries.', 'ai-h5p-generator'),
+                    $content_type
+                )
             );
         }
 
-        if (!wp_mkdir_p($target_dir . '/content')) {
+        $dependencies = AIAH5P_Library_Manager::dependencies_of((int) $main['id']);
+        $libraries = [];
+        foreach ($dependencies as $library) {
+            $libraries[$library['id']] = $library;
+        }
+        $libraries[$main['id']] = $main;
+
+        return [
+            'main' => $main,
+            'libraries' => array_values($libraries),
+        ];
+    }
+
+    public static function write_content_dir($content_id, $title, $main_library, $content_json)
+    {
+        $target_dir = AIAH5P_Content_Store::content_dir($content_id);
+        if (!wp_mkdir_p($target_dir)) {
             return new WP_Error('aiah5p_write_failed', __('Could not create the content directory in uploads.', 'ai-h5p-generator'));
         }
 
-        file_put_contents(
-            $target_dir . '/content/content.json',
-            wp_json_encode($content_json, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)
-        );
+        $main_name = $main_library['machine_name'] . ' ' . $main_library['major_version'] . '.' . $main_library['minor_version'];
 
-        self::copy_dir($libraries_dir, $target_dir);
-
-        $main_library = self::main_library_name($content_type);
         file_put_contents(
             $target_dir . '/h5p.json',
             wp_json_encode([
-                'title' => isset($content_json['title']) ? $content_json['title'] : $id,
+                'title' => $title,
                 'language' => 'und',
-                'mainLibrary' => $main_library,
+                'mainLibrary' => $main_library['machine_name'],
                 'embedTypes' => ['div'],
             ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)
+        );
+        file_put_contents(
+            $target_dir . '/content.json',
+            wp_json_encode($content_json, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)
+        );
+        file_put_contents(
+            $target_dir . '/library.json',
+            wp_json_encode(['name' => $main_name], JSON_UNESCAPED_UNICODE)
         );
 
         return $target_dir;
     }
 
-    public static function zip_content($id)
+    public static function zip_content($content_id)
     {
-        $dir = AIAH5P_Content_Store::content_dir($id);
-        if (is_wp_error($dir)) {
-            return $dir;
+        $content = AIAH5P_Content_Store::get($content_id);
+        if (is_wp_error($content)) {
+            return $content;
         }
 
-        $zip_path = trailingslashit(AIAH5P_Content_Store::base_dir()) . $id . '.h5p';
+        $libraries = AIAH5P_Content_Store::content_libraries($content_id);
+        if (empty($libraries)) {
+            return new WP_Error('aiah5p_missing_library', __('No libraries are associated with this content.', 'ai-h5p-generator'));
+        }
+
+        $base_dir = AIAH5P_Content_Store::base_dir();
+        $zip_path = trailingslashit($base_dir) . 'content/' . $content_id . '.h5p';
         $zip = new ZipArchive();
         if ($zip->open($zip_path, ZipArchive::OVERWRITE | ZipArchive::CREATE) !== true) {
             return new WP_Error('aiah5p_zip_failed', __('Could not create the H5P zip archive.', 'ai-h5p-generator'));
         }
-        self::zip_add_dir($zip, $dir, '');
-        $zip->close();
 
-        return $zip_path;
-    }
+        $zip->addFile(
+            AIAH5P_Content_Store::content_dir($content_id) . '/h5p.json',
+            'h5p.json'
+        );
+        $content_json = json_decode($content['parameters'], true);
+        $zip->addFromString(
+            'content/content.json',
+            wp_json_encode($content_json, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)
+        );
 
-    private static function main_library_name($content_type)
-    {
-        $map = [
-            'H5P.QuestionSet' => 'H5P.QuestionSet',
-            'H5P.MultiChoice' => 'H5P.MultiChoice',
-            'H5P.Blanks' => 'H5P.Blanks',
-        ];
-        return isset($map[$content_type]) ? $map[$content_type] : $content_type;
-    }
-
-    private static function copy_dir($src, $dst)
-    {
-        $dir = opendir($src);
-        @mkdir($dst, 0755, true);
-        while (($file = readdir($dir)) !== false) {
-            if ($file === '.' || $file === '..') {
+        $libraries_dir = AIAH5P_Library_Manager::libraries_dir();
+        foreach ($libraries as $library) {
+            $source = trailingslashit($libraries_dir) . $library['folder'];
+            if (!is_dir($source)) {
                 continue;
             }
-            if (is_dir($src . '/' . $file)) {
-                self::copy_dir($src . '/' . $file, $dst . '/' . $file);
-            } else {
-                copy($src . '/' . $file, $dst . '/' . $file);
-            }
+            $local_base = $library['folder'];
+            $zip->addEmptyDir($local_base);
+            self::zip_add_dir($zip, $source, $local_base);
         }
-        closedir($dir);
+
+        $zip->close();
+        return $zip_path;
     }
 
     private static function zip_add_dir($zip, $src, $base)

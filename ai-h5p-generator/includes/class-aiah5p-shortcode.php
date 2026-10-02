@@ -27,25 +27,32 @@ class AIAH5P_Shortcode
     {
         $atts = shortcode_atts([
             'id' => '',
-            'width' => '',
         ], $atts, 'aiah5p');
 
-        $id = preg_replace('/^aiah5p_/', '', $atts['id']);
-        if (!ctype_digit((string) $id)) {
+        $id = absint($atts['id']);
+        if ($id === 0) {
             return '';
         }
 
-        $dir = AIAH5P_Content_Store::content_dir($id);
-        if (is_wp_error($dir)) {
+        $content = AIAH5P_Content_Store::get($id);
+        if (is_wp_error($content)) {
             return current_user_can('manage_options')
-                ? '<p><em>' . esc_html($dir->get_error_message()) . '</em></p>'
+                ? '<p><em>' . esc_html($content->get_error_message()) . '</em></p>'
+                : '';
+        }
+
+        $dir = AIAH5P_Content_Store::content_dir($id);
+        if (!file_exists($dir . '/h5p.json')) {
+            return current_user_can('manage_options')
+                ? '<p><em>' . esc_html(__('The H5P content files are missing on disk.', 'ai-h5p-generator')) . '</em></p>'
                 : '';
         }
 
         wp_enqueue_script('aiah5p-standalone');
 
         $frame_id = 'aiah5p-frame-' . $id;
-        $url = AIAH5P_Content_Store::content_url($id);
+        $content_url = AIAH5P_Content_Store::content_url($id);
+        $libraries_url = AIAH5P_Library_Manager::libraries_url();
 
         ob_start();
         ?>
@@ -53,13 +60,14 @@ class AIAH5P_Shortcode
         <script>
         (function () {
             function init() {
-                new H5PStandalone.H5P('<?php echo esc_js($frame_id); ?>', '<?php echo esc_js($url); ?>', {
+                new H5PStandalone.H5P('<?php echo esc_js($frame_id); ?>', '<?php echo esc_js($content_url); ?>', {
                     frame: true,
                     copyright: false,
                     embed: false,
                     download: false,
                     icon: false,
-                    export: false
+                    export: false,
+                    librariesPath: '<?php echo esc_js($libraries_url); ?>/'
                 });
             }
             if (window.H5PStandalone) {

@@ -12,9 +12,52 @@ class AIAH5P_Library_Manager
         add_action('admin_post_aiah5p_delete_library', [__CLASS__, 'handle_delete']);
     }
 
+    public static function libraries_dir()
+    {
+        $uploads = wp_upload_dir();
+        $dir = trailingslashit($uploads['basedir']) . 'aiah5p/libraries';
+        if (!is_dir($dir)) {
+            wp_mkdir_p($dir);
+        }
+        return $dir;
+    }
+
+    public static function libraries_url()
+    {
+        $uploads = wp_upload_dir();
+        return trailingslashit($uploads['baseurl']) . 'aiah5p/libraries';
+    }
+
+    public static function installed_libraries()
+    {
+        global $wpdb;
+        $table = AIAH5P_DB::table('libraries');
+        return $wpdb->get_results("SELECT * FROM {$table} ORDER BY machine_name ASC", ARRAY_A);
+    }
+
+    public static function library_id($machine_name, $major, $minor)
+    {
+        global $wpdb;
+        $table = AIAH5P_DB::table('libraries');
+        return $wpdb->get_var($wpdb->prepare(
+            "SELECT id FROM {$table} WHERE machine_name = %s AND major_version = %d AND minor_version = %d",
+            $machine_name,
+            $major,
+            $minor
+        ));
+    }
+
+    public static function folder_name($info)
+    {
+        return $info['machine_name'] . '-' . $info['major_version'] . '.' . $info['minor_version'];
+    }
+
     public static function handle_upload()
     {
-        self::guard();
+        if (!current_user_can('manage_options')) {
+            wp_die(__('You are not allowed to do that.', 'ai-h5p-generator'));
+        }
+        check_admin_referer('aiah5p_library');
 
         if (empty($_FILES['aiah5p_library'])) {
             self::redirect('error', __('No file uploaded.', 'ai-h5p-generator'));
@@ -22,16 +65,13 @@ class AIAH5P_Library_Manager
 
         require_once ABSPATH . 'wp-admin/includes/file.php';
 
-        $file = wp_unslash($_FILES['aiah5p_library']);
+        $file = $_FILES['aiah5p_library'];
         $tmp_name = $file['tmp_name'];
 
         $zip = new ZipArchive();
         if ($zip->open($tmp_name) !== true) {
             self::redirect('error', __('The uploaded file could not be opened as a zip archive.', 'ai-h5p-generator'));
         }
-
-        $libraries = AIAH5P_H5P_Builder::libraries_dir();
-        wp_mkdir_p($libraries);
 
         $added = [];
         $skipped = [];
@@ -40,21 +80,56 @@ class AIAH5P_Library_Manager
             $entry = $zip->statIndex($i);
             $parts = explode('/', $entry['name']);
             $top = $parts[0];
-            if ($top === '' || $top === 'content' || strpos($top, '.') === 0 || $top === 'h5p.json' || count($parts) < 2) {
-                continue;
-            }
-            if (!preg_match('/^H5P\.[A-Za-z0-9_]+$/', $top)) {
+            if (!preg_match('/^H5P\.[A-Za-z0-9_]+$/', $top) || count($parts) < 2) {
                 continue;
             }
 
-            $dest_dir = trailingslashit($libraries) . $top;
-            if (file_exists($dest_dir . '/library.json')) {
-                $skipped[] = $top;
+            $json = $zip->getFromName($top . '/library.json');
+            if ($json === false) {
+                continue;
+            }
+            $info = json_decode($json, true);
+            if (!is_array($info) || empty($info['title']) || !isset($info['majorVersion'], $info['minorVersion'])) {
                 continue;
             }
 
-            $zip->extractTo($libraries, [$entry['name']]);
-            $added[] = $top;
+            $folder = $top . '-' . $info['majorVersion'] . '.' . $info['minorVersion'];
+            if (self::library_id($top, (int) $info['majorVersion'], (int) $info['minorVersion'])) {
+                $skipped[] = $folder;
+                continue;
+            }
+
+            $target = trailingslashit(self::libraries_dir()) . $folder;
+            if (!wp_mkdir_p($target)) {
+                continue;
+            }
+
+            foreach (range(0, $zip->numFiles - 1) as $j) {
+                $sub = $zip->statIndex($j);
+                if (strpos($sub['name'], $top . '/') !== 0) {
+                    continue;
+                }
+                $local = substr($sub['name'], strlen($top . '/'));
+                if ($local === false || $local === '') {
+                    continue;
+                }
+                if (substr($local, -1) === '/') {
+                    wp_mkdir_p($target . '/' . $local);
+                    continue;
+                }
+                $dir = dirname($target . '/' . $local);
+                if (!is_dir($dir)) {
+                    wp_mkdir_p($dir);
+                }
+                $stream = $zip->getStream($sub['name']);
+                if ($stream) {
+                    file_put_contents($target . '/' . $local, $stream);
+                    fclose($stream);
+                }
+            }
+
+            self::register_library($top, $info, $folder);
+            $added[] = $folder;
         }
         $zip->close();
 
@@ -63,38 +138,99 @@ class AIAH5P_Library_Manager
         }
 
         $message = sprintf(
-            /* translators: 1: list of added libraries, 2: list of skipped libraries */
             __('Added: %1$s. %2$s', 'ai-h5p-generator'),
-            implode(', ', array_unique($added)) ?: __('none', 'ai-h5p-generator'),
-            $skipped ? sprintf(__('Skipped (already installed): %s', 'ai-h5p-generator'), implode(', ', array_unique($skipped))) : ''
+            implode(', ', $added) ?: __('none', 'ai-h5p-generator'),
+            $skipped ? sprintf(__('Skipped (already installed): %s', 'ai-h5p-generator'), implode(', ', $skipped)) : ''
         );
         self::redirect('success', $message);
     }
 
-    public static function handle_delete()
+    public static function register_library($machine_name, $info, $folder)
     {
-        self::guard();
-
-        $name = isset($_POST['aiah5p_library_name']) ? sanitize_text_field(wp_unslash($_POST['aiah5p_library_name'])) : '';
-        if (!preg_match('/^H5P\.[A-Za-z0-9_]+$/', $name)) {
-            self::redirect('error', __('Invalid library name.', 'ai-h5p-generator'));
-        }
-
-        $dir = trailingslashit(AIAH5P_H5P_Builder::libraries_dir()) . $name;
-        if (!is_dir($dir)) {
-            self::redirect('error', __('Library not found.', 'ai-h5p-generator'));
-        }
-
-        self::rrmdir($dir);
-        self::redirect('success', sprintf(__('Deleted library %s.', 'ai-h5p-generator'), $name));
+        global $wpdb;
+        $table = AIAH5P_DB::table('libraries');
+        $wpdb->query($wpdb->prepare(
+            "INSERT INTO {$table} (machine_name, title, major_version, minor_version, patch_version, runnable, folder)
+             VALUES (%s, %s, %d, %d, %d, %d, %s)
+             ON DUPLICATE KEY UPDATE title = VALUES(title), folder = VALUES(folder)",
+            $machine_name,
+            isset($info['title']) ? $info['title'] : '',
+            isset($info['majorVersion']) ? (int) $info['majorVersion'] : 0,
+            isset($info['minorVersion']) ? (int) $info['minorVersion'] : 0,
+            isset($info['patchVersion']) ? (int) $info['patchVersion'] : 0,
+            isset($info['runnable']) ? (int) $info['runnable'] : 0,
+            $folder
+        ));
     }
 
-    private static function guard()
+    public static function handle_delete()
     {
         if (!current_user_can('manage_options')) {
             wp_die(__('You are not allowed to do that.', 'ai-h5p-generator'));
         }
         check_admin_referer('aiah5p_library');
+
+        $library_id = isset($_POST['aiah5p_library_id']) ? absint($_POST['aiah5p_library_id']) : 0;
+        if ($library_id === 0) {
+            self::redirect('error', __('Invalid library.', 'ai-h5p-generator'));
+        }
+
+        $usage = self::library_usage_count($library_id);
+        if ($usage > 0) {
+            self::redirect('error', sprintf(__('This library is used by %d content item(s) and cannot be deleted.', 'ai-h5p-generator'), $usage));
+        }
+
+        global $wpdb;
+        $table = AIAH5P_DB::table('libraries');
+        $library = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$table} WHERE id = %d", $library_id), ARRAY_A);
+        if (!$library) {
+            self::redirect('error', __('Library not found.', 'ai-h5p-generator'));
+        }
+
+        $dir = trailingslashit(self::libraries_dir()) . $library['folder'];
+        if (is_dir($dir)) {
+            self::rrmdir($dir);
+        }
+        $wpdb->delete($table, ['id' => $library_id]);
+        self::redirect('success', sprintf(__('Deleted library %s.', 'ai-h5p-generator'), $library['folder']));
+    }
+
+    public static function library_usage_count($library_id)
+    {
+        global $wpdb;
+        $table = AIAH5P_DB::table('contents_libraries');
+        return (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$table} WHERE library_id = %d", $library_id));
+    }
+
+    public static function dependencies_of($library_id)
+    {
+        global $wpdb;
+        $libraries = AIAH5P_DB::table('libraries');
+        $library = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$libraries} WHERE id = %d", $library_id), ARRAY_A);
+        if (!$library) {
+            return [];
+        }
+
+        $dir = trailingslashit(self::libraries_dir()) . $library['folder'];
+        $json_path = $dir . '/library.json';
+        if (!file_exists($json_path)) {
+            return [$library];
+        }
+        $info = json_decode((string) file_get_contents($json_path), true);
+        if (!is_array($info) || empty($info['preloadedDependencies'])) {
+            return [$library];
+        }
+
+        $result = [$library];
+        foreach ($info['preloadedDependencies'] as $dep) {
+            $dep_id = self::library_id($dep['machineName'], (int) $dep['majorVersion'], (int) $dep['minorVersion']);
+            if ($dep_id) {
+                foreach (self::dependencies_of($dep_id) as $sub) {
+                    $result[$sub['id']] = $sub;
+                }
+            }
+        }
+        return $result;
     }
 
     private static function redirect($type, $message)

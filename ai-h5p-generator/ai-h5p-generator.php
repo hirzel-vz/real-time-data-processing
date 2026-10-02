@@ -17,6 +17,7 @@ define('AIAH5P_VERSION', '0.1.0');
 define('AIAH5P_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('AIAH5P_PLUGIN_URL', plugin_dir_url(__FILE__));
 
+require_once AIAH5P_PLUGIN_DIR . 'includes/class-aiah5p-db.php';
 require_once AIAH5P_PLUGIN_DIR . 'includes/class-aiah5p-settings.php';
 require_once AIAH5P_PLUGIN_DIR . 'includes/class-aiah5p-mistral-client.php';
 require_once AIAH5P_PLUGIN_DIR . 'includes/class-aiah5p-h5p-builder.php';
@@ -29,6 +30,7 @@ require_once AIAH5P_PLUGIN_DIR . 'includes/class-aiah5p-admin.php';
 register_activation_hook(__FILE__, ['AIAH5P_Settings', 'activate']);
 
 add_action('init', function () {
+    AIAH5P_DB::init();
     AIAH5P_Settings::init();
     AIAH5P_Mistral_Client::init();
     AIAH5P_H5P_Builder::init();

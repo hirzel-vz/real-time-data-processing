@@ -37,51 +37,41 @@ class AIAH5P_Generator
             self::redirect_with_notice($redirect, 'error', $content_json->get_error_message());
         }
 
-        $id = uniqid('aiah5p_');
         $title = isset($content_json['title']) && $content_json['title'] !== '' ? $content_json['title'] : __('AI-generated H5P', 'ai-h5p-generator');
 
-        $dir = AIAH5P_H5P_Builder::build_content_dir($id, $content_type, $content_json);
+        $resolved = AIAH5P_H5P_Builder::resolve_libraries($content_type);
+        if (is_wp_error($resolved)) {
+            self::redirect_with_notice($redirect, 'error', $resolved->get_error_message());
+        }
+
+        $content_id = AIAH5P_Content_Store::save(
+            $title,
+            $content_type,
+            $prompt,
+            $content_json,
+            $resolved['main']['id'],
+            wp_list_pluck($resolved['libraries'], 'id')
+        );
+        if (is_wp_error($content_id)) {
+            self::redirect_with_notice($redirect, 'error', $content_id->get_error_message());
+        }
+
+        $dir = AIAH5P_H5P_Builder::write_content_dir($content_id, $title, $resolved['main'], $content_json);
         if (is_wp_error($dir)) {
+            AIAH5P_Content_Store::delete($content_id);
             self::redirect_with_notice($redirect, 'error', $dir->get_error_message());
         }
 
-        $post_id = AIAH5P_Content_Store::save($title, $content_type, $prompt, $dir);
-        if (is_wp_error($post_id)) {
-            self::redirect_with_notice($redirect, 'error', $post_id->get_error_message());
-        }
-
-        $rename_from = trailingslashit(AIAH5P_Content_Store::base_dir()) . $id;
-        $rename_to = trailingslashit(AIAH5P_Content_Store::base_dir()) . $post_id;
-        if (!@rename($rename_from, $rename_to)) {
-            self::copy_dir_simple($rename_from, $rename_to);
-        }
-
         self::redirect_with_notice(
-            add_query_arg('aiah5p_content_id', $post_id, $redirect),
+            add_query_arg('aiah5p_content_id', $content_id, $redirect),
             'success',
             sprintf(
                 /* translators: 1: content id, 2: shortcode */
                 __('H5P content created (id %1$d). Use the shortcode %2$s in any post or page.', 'ai-h5p-generator'),
-                $post_id,
-                '[aiah5p id="' . $post_id . '"]'
+                $content_id,
+                '[aiah5p id="' . $content_id . '"]'
             )
         );
-    }
-
-    private static function copy_dir_simple($src, $dst)
-    {
-        if (!is_dir($src)) {
-            return;
-        }
-        @mkdir($dst, 0755, true);
-        $entries = new FilesystemIterator($src);
-        foreach ($entries as $entry) {
-            if ($entry->isDir()) {
-                self::copy_dir_simple($entry->getPathname(), $dst . '/' . $entry->getFilename());
-            } else {
-                @copy($entry->getPathname(), $dst . '/' . $entry->getFilename());
-            }
-        }
     }
 
     private static function redirect_with_notice($url, $type, $message)
